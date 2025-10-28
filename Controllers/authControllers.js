@@ -3,6 +3,7 @@ const JWT = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const { registerDTO } = require("../Joi/Regsiter.dto");
+const { error } = require("console");
 
 exports.registerUser = async (req, res) => {
   try {
@@ -74,22 +75,59 @@ try{
    catch (err) {
     console.error("Login error:", err);
     res.status(500).json({ message: "Server error ", error: err.message });
-  }}
-exports.forgetpassword = async (req,res) =>{
-  try{
+  }};
+exports.forgotPassword = async (req, res) => {
+  try {
     const { email } = req.body;
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const resetToken = crypto.randomBytes(25).toString("hex");
+    const resetToken = crypto.randomBytes(32).toString("hex");
     user.resetToken = resetToken;
-    user.resetTokenExpire = Date.now()+5*60*1000;
+    user.resetToken = resetToken;
+    user.resetTokenExpire = Date.now() + 30 * 60 * 1000;
+    await user.save({ validateBeforeSave: false });
 
-    const resetLink = `http://localhost:8080/api/auth/resetpassword/${resetToken}`;
+    const resetLink = `http:localhost:8080/api/auth/resetpassword?token=${resetToken}`;
 
-    res.status(200).json({message:"Reset link generated",resetLink,token:resetToken});
+    res.status(200).json({
+      message: "Reset link generated",
+      resetLink,
+      token: resetToken
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
-  catch(error){
-    return res.status(500).json({message:"server error",error});
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token } = req.query;
+    const { password, confirmPassword } = req.body;
+
+    if (!token) return res.status(400).send("Token is missing");
+    if (!password || !confirmPassword)
+      return res.status(400).send("Both password fields are required");
+    if (password !== confirmPassword)
+      return res.status(400).send("Passwords do not match");
+
+    const user = await User.findOne({
+      resetToken: token,
+      resetTokenExpire: { $gt: Date.now() },
+    });
+
+    if (!user) return res.status(400).send("Invalid or expired token");
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    user.password = hashedPassword;
+    user.resetToken = undefined;
+    user.resetTokenExpire = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    res.status(201).json({
+      message: "User password changed successfully",user,
+    });
+  } catch (err) {
+    res.status(500).send("Server error");
   }
-}
+};
