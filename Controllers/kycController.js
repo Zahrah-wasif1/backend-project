@@ -1,27 +1,44 @@
-const dotenv = require("dotenv");
-dotenv.config();
+// Controllers/kycController.js
+const KYC = require("../Models/kycModels");
+const axios = require("axios");
+const FormData = require("form-data");
 
-exports.verifyIdentity = (req, res) => {
-    const { name, dob, documentNumber } = req.body;
-    const file = req.file;
-    if (!name || !dob || !documentNumber || !file) {
-        return res.status(400).json({ message: "all fields are required" });
-    }
-    const birthYear = new Date(dob).getFullYear();
-    const currentYear = new Date().getFullYear();
-    const age = currentYear - birthYear;
+exports.verifyIdentity = async (req, res) => {
+  try {
+    const { fullName, email, phoneNumber, address, idType, idNumber } = req.body;
 
-    if (age < parseInt(process.env.MINIMUM_AGE || "18")) {
-        return res.status(400).json({ message: "user underage" });
-    }
-    return res.json({
-        message: "Mock KYC success ",
-        data: {
-            status: "approved",
-            age,
-            reason: "Mock KYC successful",
-            name,
-            documentNumber
-        }
+    const frontImageBuffer = req.files["frontImage"][0].buffer;
+    const backImageBuffer = req.files["backImage"][0].buffer;
+
+    const formData = new FormData();
+    formData.append("document_primary", frontImageBuffer, "front.jpg");
+    formData.append("document_secondary", backImageBuffer, "back.jpg");
+    formData.append("document_type", idType);
+    formData.append("country", "PK");
+
+    const response = await axios.post(
+  "https://api.idanalyzer.com/v2/ocr",
+  formData,
+  { headers: { ...formData.getHeaders(), "X-API-KEY": process.env.IDANALYZER_SERVER_KEY } }
+);
+
+    const kycRecord = await KYC.create({
+      fullName,
+      email,
+      phone: phoneNumber,
+      address,
+      idType,
+      idNumber,
+      frontImage: frontImageBuffer,
+      backImage: backImageBuffer,
+      verificationStatus: response.data.error ? "failed" : "success",
+      verificationResult: response.data
     });
+
+    res.status(200).json({ message: "KYC verification completed", data: kycRecord });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Verification failed", error: error.message });
+  }
 };

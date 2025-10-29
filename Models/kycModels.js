@@ -1,35 +1,45 @@
-import { required } from "joi";
-import mongoose from "mongoose";
+const mongoose = require("mongoose");
 
 const kycSchema = new mongoose.Schema({
-  fullName: {
-    type:String,
-    required:true
-},
-  email:{ 
-    type:String,
-    required:true
+  fullName: 
+  { type: String,
+     required: true },
+  email: { 
+    type: String, 
+    required: true 
   },
-  phone:{
-    type:String,
-    required:true
-  }, 
-  address:{ 
-    type:String,
-    required:true
-    },  
-    idType:{
-        type:String,},
-  idNumber:{ 
-    type:String,
-    required:true
-},
-  verificationResult:{
-    type:Object,
+  phone: {
+     type: Number,
+      required: true },
+  address: { 
+    type: String,
+     required: true },
+  idType: { 
+    type: String,
+     required: true },
+  idNumber: { 
+    type: String, 
+    required: true 
   },
-  createdAt:
-   { type: Date, 
-    default: Date.now },
+  frontImage: { 
+    type: Buffer 
+  },
+  backImage: { 
+    type: Buffer 
+  },
+  verificationResult: Object,
+  verificationStatus: {
+     type: String,
+      enum: [
+        "pending", 
+        "success",
+        "failed"],
+      default: "pending"
+     },
+  createdAt: { 
+    type: Date, 
+    default: Date.now 
+  }
 });
 
-export const KycRecord = mongoose.model("KycRecord", kycSchema);
+module.exports = mongoose.model("KycRecord", kycSchema);
