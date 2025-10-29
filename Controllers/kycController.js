@@ -102,3 +102,33 @@ exports.verifyIdentity = async (req, res) => {
     res.status(500).json({ message: "Verification failed", error: error.message });
   }
 };
+exports.getKYCUser = async (req, res) => {
+  try {
+    const search = req.query.search || "";
+    const date = req.query.date || "";
+    const filter = {};
+
+    // Search by name, email, or document type
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { documentType: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // Filter by creation date
+    if (date) {
+      const start = new Date(date);
+      const end = new Date(date);
+      end.setHours(23, 59, 59, 999);
+      filter.createdAt = { $gte: start, $lte: end };
+    }
+
+    const kycUsers = await KYC.find(filter);
+    res.json(kycUsers);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+

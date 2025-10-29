@@ -131,3 +131,30 @@ exports.resetPassword = async (req, res) => {
     res.status(500).send("Server error");
   }
 };
+exports.getuser = async (req, res) => {
+  try {
+    const search = req.query.search || "";
+    const date = req.query.date || ""; 
+    const filter = {};
+
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { city: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    if (date) {
+      const start = new Date(date);
+      const end = new Date(date);
+      end.setHours(23, 59, 59, 999);
+      filter.createdAt = { $gte: start, $lte: end };
+    }
+
+    const users = await User.find(filter);
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
