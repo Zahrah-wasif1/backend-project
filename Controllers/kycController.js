@@ -1,106 +1,65 @@
-// Controllers/kycController.js
 const KYC = require("../Models/kycModels");
 const axios = require("axios");
-const FormData = require("form-data");
 
 exports.verifyIdentity = async (req, res) => {
   try {
-    if (!process.env.IDANALYZER_SERVER_KEY) {
-      return res.status(500).json({
-        message: "Server misconfigured: missing IDANALYZER_SERVER_KEY",
-      });
+    const apiKey = process.env.IDANALYZER_API_KEY;
+    const profileId = process.env.IDANALYZER_PROFILE_ID;
+    const apiUrl = process.env.IDANALYZER_API_URL || "https://api2.idanalyzer.com/ocr";
+
+    if (!apiKey || !profileId) {
+      return res.status(500).json({ message: "Missing IDANALYZER_API_KEY or IDANALYZER_PROFILE_ID" });
     }
 
     const { fullName, email, phoneNumber, address, idType, idNumber } = req.body;
+    if (!fullName || !email || !phoneNumber || !address || !idType || !idNumber) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
 
     if (!req.files || !req.files["frontImage"] || !req.files["backImage"]) {
-      return res.status(400).json({
-        message: "frontImage and backImage files are required",
-      });
+      return res.status(400).json({ message: "frontImage and backImage are required" });
     }
 
-    const frontImageBuffer = req.files["frontImage"][0].buffer;
-    const backImageBuffer = req.files["backImage"][0].buffer;
+    // Convert images to base64
+    const frontBase64 = req.files["frontImage"][0].buffer.toString("base64");
+    const backBase64 = req.files["backImage"][0].buffer.toString("base64");
 
-    const formData = new FormData();
-    formData.append("document_primary", frontImageBuffer, "front.jpg");
-    formData.append("document_secondary", backImageBuffer, "back.jpg");
-    formData.append("document_type", idType);
-    formData.append("country", "PK");
-
-    const headers = { ...formData.getHeaders(), "X-API-KEY": process.env.IDANALYZER_SERVER_KEY };
-
-    const normalizeOcrUrl = (rawUrl) => {
-      if (!rawUrl) return "https://api.idanalyzer.com/v2/ocr";
-      try {
-        const u = new URL(rawUrl);
-        // If no pathname or just '/'
-        if (!u.pathname || u.pathname === "/") {
-          u.pathname = "/ocr"; // default path
-        }
-        // Remove double slashes at end
-        if (u.pathname.endsWith("//")) {
-          u.pathname = u.pathname.replace(/\/+$/, "/");
-        }
-        // Ensure it ends with '/ocr' or '/v2/ocr'
-        if (!/\/ocr$/.test(u.pathname)) {
-          // If user specified '/v2', append '/ocr'
-          if (/\/v2$/.test(u.pathname)) {
-            u.pathname = `${u.pathname}/ocr`;
-          }
-        }
-        return u.toString();
-      } catch (_) {
-        return rawUrl;
-      }
+    const payload = {
+      document: `data:image/jpeg;base64,${frontBase64}`,
+      document_back: `data:image/jpeg;base64,${backBase64}`,
+      profile: profileId,
+      country: "PK",
+      id_type: idType,
+      id_number: idNumber,
+      user_email: email,
+      user_phone: phoneNumber,
+      user_fullname: fullName,
+      user_address: address,
     };
 
-    let ocrUrl = normalizeOcrUrl(process.env.IDANALYZER_OCR_URL) || "https://api.idanalyzer.com/v2/ocr";
-    let response;
-    const upstreamTimeoutMs = Number(process.env.IDANALYZER_TIMEOUT_MS || 120000);
-    const tryPost = async (urlToUse) => axios.post(urlToUse, formData, { headers, timeout: upstreamTimeoutMs });
+    // Send to ID Analyzer
+    const response = await axios.post(apiUrl, payload, {
+      headers: {
+        "X-API-KEY": apiKey,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      timeout: 120000,
+    });
 
-    try {
-      response = await tryPost(ocrUrl);
-    } catch (primaryErr) {
-      const is404 = primaryErr.response && primaryErr.response.status === 404;
-      if (!is404) throw primaryErr;
+    // Extract simple data from API response
+    const data = response.data?.data || {};
+    const simplified = {
+      documentName: data.documentName?.[0]?.value || null,
+      documentNumber: data.documentNumber?.[0]?.value || null,
+      nationality: data.nationalityFull?.[0]?.value || null,
+      country: data.countryFull?.[0]?.value || null,
+      personalNumber: data.personalNumber?.[0]?.value || null,
+      internalId: data.internalId?.[0]?.value || null,
+      verificationStatus: response.data.error ? "failed" : "success",
+    };
 
-      // Build probe list on same host
-      let hostBase;
-      try {
-        const u = new URL(ocrUrl);
-        hostBase = `${u.protocol}//${u.host}`;
-      } catch (_) {
-        hostBase = "https://api.idanalyzer.com";
-      }
-
-      const candidates = [
-        "/v2/ocr",
-        "/ocr",
-        "/v2/ocr/scan",
-        "/ocr/scan",
-      ].map((p) => `${hostBase}${p}`);
-
-      let lastErr = primaryErr;
-      for (const candidate of candidates) {
-        if (candidate === ocrUrl) continue;
-        try {
-          response = await tryPost(candidate);
-          ocrUrl = candidate;
-          lastErr = null;
-          break;
-        } catch (e) {
-          lastErr = e;
-          // Only continue probing on 404s; stop early on auth/4xx not-found-related or 5xx?
-          if (!(e.response && e.response.status === 404)) {
-            break;
-          }
-        }
-      }
-      if (!response) throw lastErr || primaryErr;
-    }
-
+    // Save full record in DB (images included)
     const kycRecord = await KYC.create({
       fullName,
       email,
@@ -108,35 +67,38 @@ exports.verifyIdentity = async (req, res) => {
       address,
       idType,
       idNumber,
-      frontImage: frontImageBuffer,
-      backImage: backImageBuffer,
-      verificationStatus: response.data.error ? "failed" : "success",
-      verificationResult: response.data
+      frontImage: req.files["frontImage"][0].buffer,
+      backImage: req.files["backImage"][0].buffer,
+      verificationStatus: simplified.verificationStatus,
+      verificationResult: response.data,
     });
 
-    res.status(200).json({ message: "KYC verification completed", data: kycRecord, ocrUrlUsed: ocrUrl });
+    // Hide images & full JSON from response
+    const sanitizedRecord = kycRecord.toObject();
+    delete sanitizedRecord.frontImage;
+    delete sanitizedRecord.backImage;
+    delete sanitizedRecord.verificationResult;
+
+    // ✅ Final Clean Response
+    res.status(200).json({
+      message: "KYC verification completed successfully",
+      data: {
+        ...sanitizedRecord,
+        verificationSummary: simplified,
+      },
+    });
 
   } catch (error) {
-    if (error.code === 'ECONNABORTED') {
-      return res.status(504).json({
-        message: "Verification timed out upstream",
-        timeoutMs: upstreamTimeoutMs,
-        hint: "Increase IDANALYZER_TIMEOUT_MS or try smaller images",
-      });
-    }
+    console.error(error);
+
     if (error.response) {
-      console.error("ID Analyzer error:", {
-        status: error.response.status,
-        data: error.response.data,
-      });
       return res.status(502).json({
         message: "Verification failed (upstream)",
-        requestedUrl: (error.config && error.config.url) || null,
-        upstreamStatus: error.response.status,
-        upstreamError: error.response.data,
+        status: error.response.status,
+        error: error.response.data?.error || "Unknown error from upstream",
       });
     }
-    console.error(error);
+
     res.status(500).json({ message: "Verification failed", error: error.message });
   }
 };

@@ -19,6 +19,7 @@
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "form-data": "^4.0.4",
+    "FormData": "^0.10.1",
     "idanalyzer": "^1.2.7",
     "joi": "^18.0.1",
     "jsonwebtoken": "^9.0.2",
