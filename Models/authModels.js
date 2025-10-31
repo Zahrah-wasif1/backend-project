@@ -1,24 +1,37 @@
-    const { required } = require("joi");
 const mongoose = require("mongoose");
 
-    const AuthSchema = new mongoose.Schema({
-        email:{
-            type:String,
-            required:true,
-            unique:true
-        },
-        username:{
-            type:String,
-            required:true
-        },
-        password:{
-            type:String,
-            required:true
-        },
-        confirmPassword:{
-            type:String,
-            // required:true
-        },
+const AuthSchema = new mongoose.Schema({
+  fullName: {
+    type: String,
+    trim: true,
+  },
+  email: {
+    type: String,
+    lowercase: true,
+  },
+  phoneNumber: {
+    type: String,
+  },
+  address: {
+    type: String,
+    required: [true, "Address is required"],
+  },
+  idType: {
+    type: String,
+    enum: ["CNIC", "Passport", "Driving License", "Other"],
+  },
+  idNumber: {
+    type: String,
+    unique: true,
+  },
+//   password: {
+//     type: String,
+//     required: [true, "Password is required"],
+//   },
+//         confirmPassword:{
+//             type:String,
+//             // required:true
+//         },
         resetToken: String,
    resetTokenExpire: Date
 

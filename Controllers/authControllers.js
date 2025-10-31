@@ -7,24 +7,23 @@ const { error } = require("console");
 
 exports.registerUser = async (req, res) => {
   try {
+    // Validate incoming data
     const { error } = registerDTO.validate(req.body);
     if (error)
       return res.status(400).json({ message: error.details[0].message });
 
-    const { email, username, password } = req.body;
+    const { email, idNumber } = req.body;
 
-    if (!email)
-      return res.status(400).json({ message: "Email is required" });
-
-    const existingUser = await User.findOne({ email });
+    // Check if email or ID number already exists
+    const existingUser = await User.findOne({
+      $or: [{ email }, { idNumber }],
+    });
     if (existingUser)
       return res.status(400).json({ message: "User already exists" });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-
+    // Create new user (no password)
     const newUser = new User({
       ...req.body,
-      password: hashedPassword,
     });
 
     await newUser.save();

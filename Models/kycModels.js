@@ -1,21 +1,13 @@
 const mongoose = require("mongoose");
 
 const kycSchema = new mongoose.Schema({
-  fullName: { type: String, required: true },
-  email: { type: String, required: true },
-  phone: { type: String, required: true },
-  address: { type: String, required: true },
-  idType: { type: String, required: true },
-  idNumber: { type: String, required: true },
-  frontImage: { type: Buffer },
-  backImage: { type: Buffer },
-  verificationResult: { type: Object },
-  verificationStatus: {
-    type: String,
-    enum: ["pending", "success", "failed"],
-    default: "pending",
-  },
-  createdAt: { type: Date, default: Date.now },
-});
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  fullName: String,
+  documentName: String,
+  documentNumber: String,
+  expiryDate: String,
+  nationality: String,
+  verificationStatus: String,
+}, { timestamps: true });
 
-module.exports = mongoose.model("KycRecord", kycSchema);
+module.exports = mongoose.model("KYC", kycSchema);
